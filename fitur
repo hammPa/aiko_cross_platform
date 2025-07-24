@@ -1,0 +1,18 @@
+Beberapa Hal yang Belum Ada (Opsional tapi Berguna):
+1. Unary operator (seperti -a, !true)
+    Fungsi parseUnary() masih kosong, dan kamu belum mendukung notasi unary.
+
+2. Scope lokal & closure belum jelas
+    Tidak terlihat bagaimana variabel dideklarasikan dalam fungsi memiliki scope tersendiri. (Mungkin kamu menunggu ke tahap runtime?)
+
+3. while belum diaktifkan
+    Komentar di lexer-mu menunjukkan kamu belum pakai while.
+
+4. Assignment ke variabel yang sudah ada
+    Tidak terlihat a = 5; tanpa var, padahal penting dalam bahasa imperatif.
+
+5. break dan continue
+    Belum terlihat di for atau statement control flow lain.
+
+6. Tipe data eksplisit
+    Semua variabel bertipe dinamis (seperti JS atau Python). Tidak masalah, tapi kalau nanti kamu pakai LLVM, kamu perlu tahu tipe-tipe ini secara statis saat compile time.
