@@ -38,7 +38,7 @@ public:
     std::shared_ptr<Stmt> parseComparison();
     std::shared_ptr<Stmt> parseTerm();
     std::shared_ptr<Stmt> parseFactor();
-    // std::shared_ptr<Stmt> parseUnary();
+    std::shared_ptr<Stmt> parseUnary();
     std::shared_ptr<Stmt> parsePrimary();
 };
 

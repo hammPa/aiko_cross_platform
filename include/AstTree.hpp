@@ -7,10 +7,10 @@
 #include <iostream>
 
 enum class StmtType {
-    Program, VarDecl, Print,
-    If, Elif, For,
-    ArrayLiteral, ArrayAccess,
-    FunctionDecl, Return,
+    Program, VarDecl, Assignment,
+    Print, If, Elif, For,
+    ArrayLiteral, ArrayAccess, UnaryOp,
+    FunctionDecl, Return, Break, Continue,
     BinaryOp, Literal, Identifier,
     FunctionCall, Typeof, Input
 };
@@ -37,6 +37,15 @@ struct VarDeclStmt: public Stmt {
         : Stmt(StmtType::VarDecl), name(n), initializer(init) {}
 };
 
+
+
+// -------------------- Assignment --------------------
+struct AssignmentStmt: public Stmt {
+    std::string name;
+    std::shared_ptr<Stmt> value;
+    AssignmentStmt(const std::string& n, std::shared_ptr<Stmt> val)
+        : Stmt(StmtType::Assignment), name(n), value(val) {}
+};
 
 
 // -------------------- Print --------------------
@@ -136,6 +145,17 @@ struct BinaryOpStmt : public Stmt {
         : Stmt(StmtType::BinaryOp), left(l), op(o), right(r) {}
 };
 
+
+
+struct UnaryOpStmt : public Stmt {
+    std::string op;
+    std::shared_ptr<Stmt> operand;
+    UnaryOpStmt(const std::string& o, std::shared_ptr<Stmt> expr)
+        : Stmt(StmtType::UnaryOp), op(o), operand(expr) {}
+};
+
+
+
 struct LiteralStmt : public Stmt {
     std::string value;
     LiteralStmt(const std::string& val)
@@ -165,6 +185,15 @@ struct TypeofStmt : public Stmt {
 struct InputStmt : public Stmt {
     InputStmt() : Stmt(StmtType::Input) {}
 };
+
+        
+struct BreakStmt : public Stmt {
+    BreakStmt() : Stmt(StmtType::Break) {}
+};
+
+struct ContinueStmt : public Stmt {
+    ContinueStmt() : Stmt(StmtType::Continue) {}
+};        
 
 
 
@@ -332,6 +361,33 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
             printStmt(ret->value, level + 1);
             break;
         }
+
+
+        case StmtType::Assignment: {
+            auto assign = std::static_pointer_cast<AssignmentStmt>(stmt);
+            indent(level); std::cout << "Assignment: " << assign->name << std::endl;
+            printStmt(assign->value, level + 1);
+            break;
+        }
+        
+        case StmtType::UnaryOp: {
+            auto unary = std::static_pointer_cast<UnaryOpStmt>(stmt);
+            indent(level); std::cout << "UnaryOp: " << unary->op << std::endl;
+            printStmt(unary->operand, level + 1);
+            break;
+        }
+
+
+        case StmtType::Break: {
+            indent(level); std::cout << "Break" << std::endl;
+            break;
+        }
+        
+        case StmtType::Continue: {
+            indent(level); std::cout << "Continue" << std::endl;
+            break;
+        }        
+
 
         default: {
             indent(level); std::cout << "Unknown StmtType" << std::endl;

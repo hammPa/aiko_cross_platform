@@ -47,6 +47,15 @@ std::shared_ptr<Stmt> Parser::parseStatement(){
     if(this->match(TokenType::RETURN).has_value()) return this->parseReturnStmt();
     if(this->match(TokenType::FUN).has_value()) return this->parseFunctionDeclStmt();
     if(this->current.type == TokenType::IDENTIFIER) return this->parseIdentifierStmt();
+    if (this->match(TokenType::BREAK).has_value()) {
+        this->expect(TokenType::SEMICOLON);
+        return std::make_shared<BreakStmt>();
+    }
+    if (this->match(TokenType::CONTINUE).has_value()) {
+        this->expect(TokenType::SEMICOLON);
+        return std::make_shared<ContinueStmt>();
+    }
+    
 
     throw std::runtime_error("Unexpected token: " + tokenTypeToString(this->current.type));
 }
@@ -168,11 +177,21 @@ std::shared_ptr<FunctionCallStmt> Parser::parseFunctionCallStmt(std::shared_ptr<
 
 
 std::shared_ptr<Stmt> Parser::parseIdentifierStmt(){
-    std::shared_ptr<Stmt> id = std::make_shared<IdentifierStmt>(this->current.value);
+    std::shared_ptr<Stmt> idStmt = std::make_shared<IdentifierStmt>(this->current.value);
     this->next_token();
     
+    // assign
+    if(this->match(TokenType::ASSIGN)){
+        std::shared_ptr<Stmt> expr = this->parseExpression();
+        this->expect(TokenType::SEMICOLON);
+
+        auto id = std::dynamic_pointer_cast<IdentifierStmt>(idStmt);
+        return std::make_shared<AssignmentStmt>(id.get()->name, expr);
+    }
+
+    // function call
     if(this->match(TokenType::LPAREN)) {
-        std::shared_ptr<Stmt> call = this->parseFunctionCallStmt(id);
+        std::shared_ptr<Stmt> call = this->parseFunctionCallStmt(idStmt);
         this->expect(TokenType::SEMICOLON);
         return call;
     }
@@ -247,17 +266,24 @@ std::shared_ptr<Stmt> Parser::parseTerm(){
 
 
 std::shared_ptr<Stmt> Parser::parseFactor(){
-    std::shared_ptr<Stmt> left = this->parsePrimary();
+    std::shared_ptr<Stmt> left = this->parseUnary();
     while(this->match(TokenType::OPERATOR, "*") || this->match(TokenType::OPERATOR, "/")){
         std::string op = this->tokens[this->position - 1].value;
-        std::shared_ptr<Stmt> right = this->parsePrimary();
+        std::shared_ptr<Stmt> right = this->parseUnary();
         left = std::make_shared<BinaryOpStmt>(left, op, right);
     }
     return left;
 }
 
 
-// std::shared_ptr<Parser> Parser::parseUnary(){}
+std::shared_ptr<Stmt> Parser::parseUnary(){
+    while(this->match(TokenType::OPERATOR, "-") || this->match(TokenType::OPERATOR, "!")){
+        std::string op = this->tokens[this->position - 1].value;
+        std::shared_ptr<Stmt> right = this->parseUnary();
+        return std::make_shared<UnaryOpStmt>(op, right);
+    }
+    return parsePrimary();
+}
 
 
 std::shared_ptr<Stmt> Parser::parsePrimary(){

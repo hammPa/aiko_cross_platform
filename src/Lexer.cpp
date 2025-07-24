@@ -117,7 +117,9 @@ Token Lexer::readIdentifier(){
         {"return", TokenType::RETURN},
         {"..", TokenType::RANGE},
         {"typeof", TokenType::TYPEOF},
-        {"input", TokenType::INPUT}
+        {"input", TokenType::INPUT},
+        {"break", TokenType::BREAK},
+        {"continue", TokenType::CONTINUE},
         // {"while", TokenType::WHILE},
     };
 
@@ -202,6 +204,14 @@ Token Lexer::get_next_token(){
 
             if (op == '=') {
                 return Token(TokenType::ASSIGN, "="); // hanya =
+            }
+
+            if (op == '>' || op == '<') {
+                return Token(TokenType::COMPARISON, std::string(1, op)); // > atau <
+            }
+        
+            if (op == '!') {
+                return Token(TokenType::OPERATOR, "!"); // unary not (!)
             }
 
             // >, <, !

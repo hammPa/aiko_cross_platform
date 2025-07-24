@@ -17,6 +17,8 @@ enum class TokenType {
     RANGE,
     TYPEOF,
     INPUT,
+    BREAK,
+    CONTINUE,
     IDENTIFIER,
     
     OPERATOR,

@@ -16,3 +16,19 @@ Beberapa Hal yang Belum Ada (Opsional tapi Berguna):
 
 6. Tipe data eksplisit
     Semua variabel bertipe dinamis (seperti JS atau Python). Tidak masalah, tapi kalau nanti kamu pakai LLVM, kamu perlu tahu tipe-tipe ini secara statis saat compile time.
+
+
+    menambahkan ast unary di ast_tree
+    menambahkan pendeteksian di lexer get_next_char
+    menambah parseunary diparser
+    
+    
+    
+    menambahkan ast assignment di ast_tree
+    menambahkan pengecekan untuk assignment di declarationvariable
+
+
+    menambahkan token break dan continue
+    menambahkan keywordnya  di lexer
+    menambahkan pengecekan di parser
+    menambahkan ast break dan continue
