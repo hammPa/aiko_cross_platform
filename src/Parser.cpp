@@ -47,25 +47,87 @@ std::shared_ptr<Stmt> Parser::parseStatement(){
     if(this->match(TokenType::RETURN).has_value()) return this->parseReturnStmt();
     if(this->match(TokenType::FUN).has_value()) return this->parseFunctionDeclStmt();
     if(this->current.type == TokenType::IDENTIFIER) return this->parseIdentifierStmt();
-    if (this->match(TokenType::BREAK).has_value()) {
+    if(this->match(TokenType::BREAK).has_value()) {
         this->expect(TokenType::SEMICOLON);
         return std::make_shared<BreakStmt>();
     }
-    if (this->match(TokenType::CONTINUE).has_value()) {
+    if(this->match(TokenType::CONTINUE).has_value()) {
         this->expect(TokenType::SEMICOLON);
         return std::make_shared<ContinueStmt>();
     }
-    
+    if(this->match(TokenType::STRUCT).has_value()) return this->parseStructDecl();
 
     throw std::runtime_error("Unexpected token: " + tokenTypeToString(this->current.type));
 }
 
+
+LiteralType mapStringToLiteralType(const std::string& s){
+    if(s == "i32") return LiteralType::INT_32;
+    if(s == "i64") return LiteralType::INT_64; // nanti diperluas
+    if(s == "f32") return LiteralType::FLOAT;
+    if(s == "f64") return LiteralType::DOUBLE;
+    if(s == "bool") return LiteralType::BOOL;
+    if(s == "str") return LiteralType::STRING;
+    return LiteralType::UNKNOWN;
+}
+
+LiteralType inferTypeFromExpr(std::shared_ptr<Stmt> expr) {
+    switch(expr->type) {
+        case StmtType::Literal: {
+            auto lit = std::static_pointer_cast<LiteralStmt>(expr);
+            return lit->dataType;
+        }
+        case StmtType::BinaryOp: {
+            auto binOp = std::static_pointer_cast<BinaryOpStmt>(expr);
+            LiteralType leftType = inferTypeFromExpr(binOp->left);
+            LiteralType rightType = inferTypeFromExpr(binOp->right);
+            
+            // floating point dulu, prioritas tinggi
+            if(leftType == LiteralType::DOUBLE || rightType == LiteralType::DOUBLE)
+                return LiteralType::DOUBLE;
+            if(leftType == LiteralType::FLOAT || rightType == LiteralType::FLOAT)
+                return LiteralType::FLOAT;
+
+            // integer: pilih yang lebih besar
+            if((leftType == LiteralType::INT_64 || rightType == LiteralType::INT_64))
+                return LiteralType::INT_64;
+            if(leftType == LiteralType::INT_32 && rightType == LiteralType::INT_32)
+                return LiteralType::INT_32;
+
+
+            return LiteralType::UNKNOWN;
+        }
+        // case StmtType::Identifier:
+        //     auto id = std::static_pointer_cast<IdentifierStmt>(expr);
+        //     return id->; // misal variable sudah punya tipe
+        default:
+            return LiteralType::UNKNOWN;
+    }
+}
+
+
+
+
 std::shared_ptr<VarDeclStmt> Parser::parseVarDeclStmt(){
     std::string name = this->expect(TokenType::IDENTIFIER).value;
-    this->expect(TokenType::ASSIGN, "=");
-    std::shared_ptr<Stmt> value = this->parseExpression();
+
+    // opsional pengecekan untuk tipe eksplisit
+    LiteralType explicitType = LiteralType::UNKNOWN;
+    bool hasExplicit = false;
+    if(this->match(TokenType::COLON)){
+        Token typeToken = this->expect(TokenType::TYPE); // TYPE = i32, f64, bool, string, dll
+        explicitType = mapStringToLiteralType(typeToken.value);
+        hasExplicit = true;
+    }
+
+
+    std::shared_ptr<Stmt> value = nullptr;
+    if (this->match(TokenType::ASSIGN)) { // kalau ada '='
+        value = this->parseExpression();
+    }
+
     this->expect(TokenType::SEMICOLON, ";");
-    return std::make_shared<VarDeclStmt>(name, value);
+    return std::make_shared<VarDeclStmt>(name, value, explicitType, hasExplicit);
 }
 
 
@@ -106,15 +168,28 @@ std::shared_ptr<ForStmt> Parser::parseForStmt(){
     std::shared_ptr<Stmt> end = this->parseExpressionUntil(TokenType::LBRACE);
     std::vector<std::shared_ptr<Stmt>> body = this->parseBlock();
 
-    int step = 1;
-    if (auto startLit = std::dynamic_pointer_cast<LiteralStmt>(start)) {
-        if (auto endLit = std::dynamic_pointer_cast<LiteralStmt>(end)) {
-            int startVal = std::stoi(startLit->value);
-            int endVal = std::stoi(endLit->value);
-            if (startVal > endVal) step = -1;
-        }
+    int32_t step = 1;
+
+    auto startLit = std::dynamic_pointer_cast<LiteralStmt>(start);
+    auto endLit = std::dynamic_pointer_cast<LiteralStmt>(end);
+
+    if (!startLit || !endLit)
+        throw std::runtime_error("For loop start and end must be integer literals");
+
+    // cek jika value adalah int32_t
+    if (!std::holds_alternative<int32_t>(startLit->value) || 
+        !std::holds_alternative<int32_t>(endLit->value))
+    {
+        throw std::runtime_error("For loop only supports integer literals");
     }
-    std::shared_ptr<Stmt> stepStmt = std::make_shared<LiteralStmt>(std::to_string(step));
+
+    int32_t startVal = std::get<int32_t>(startLit->value);
+    int32_t endVal = std::get<int32_t>(endLit->value);
+
+    if (startVal > endVal) step = -1;
+
+    std::shared_ptr<Stmt> stepStmt = std::make_shared<LiteralStmt>(int32_t(step));
+
     return std::make_shared<ForStmt>(iterator, start, end, stepStmt, body);    
 }
 
@@ -136,17 +211,30 @@ std::shared_ptr<ReturnStmt> Parser::parseReturnStmt(){
 std::shared_ptr<FunctionDeclStmt> Parser::parseFunctionDeclStmt(){
     std::string name = this->expect(TokenType::IDENTIFIER).value;
     this->expect(TokenType::LPAREN);
-    std::vector<std::string> params;
-    if(this->current.type == TokenType::IDENTIFIER){
-        params.push_back(this->expect(TokenType::IDENTIFIER).value);
-        while(this->match(TokenType::COMMA)){
-            params.push_back(this->expect(TokenType::IDENTIFIER).value);
+    
+    std::vector<std::shared_ptr<Stmt>> params;
+    while(this->current.type == TokenType::IDENTIFIER) {
+        std::string paramName = this->expect(TokenType::IDENTIFIER).value;
+
+        // cek tipe eksplisit setelah ':'
+        LiteralType paramType = LiteralType::UNKNOWN;
+        bool hasExplicit = false;
+        if(this->match(TokenType::COLON)) {
+            Token typeToken = this->expect(TokenType::TYPE); // misal "i32", "f64"
+            paramType = mapStringToLiteralType(typeToken.value);
+            hasExplicit = true;
         }
+
+        // buat VarDeclStmt untuk parameter
+        params.push_back(std::make_shared<VarDeclStmt>(paramName, nullptr, paramType, hasExplicit));
+
+        if(!this->match(TokenType::COMMA))
+            break; // tidak ada koma lagi
     }
+
     
     this->expect(TokenType::RPAREN);
     std::vector<std::shared_ptr<Stmt>> body = this->parseBlock();
-    // console.log("body: ", body);
     
     return std::make_shared<FunctionDeclStmt>(name, params, body);
 }
@@ -180,16 +268,48 @@ std::shared_ptr<Stmt> Parser::parseIdentifierStmt(){
     std::shared_ptr<Stmt> idStmt = std::make_shared<IdentifierStmt>(this->current.value);
     this->next_token();
     
+    // std::cout << tokenTypeToString(this->current.type) << "\n";
+
+    // array access
+    std::shared_ptr<Stmt> index = nullptr;
+    if(this->match(TokenType::LBRACKET)){
+        index = this->parseExpression();
+        this->expect(TokenType::RBRACKET);
+    }
+
     // assign
     if(this->match(TokenType::ASSIGN)){
         std::shared_ptr<Stmt> expr = this->parseExpression();
         this->expect(TokenType::SEMICOLON);
 
         auto id = std::dynamic_pointer_cast<IdentifierStmt>(idStmt);
-        return std::make_shared<AssignmentStmt>(id.get()->name, expr);
+        return std::make_shared<AssignmentStmt>(id.get()->name, expr, index);
     }
 
-    // function call
+    if(this->current.type == TokenType::OPERATOR) {
+        std::string op = this->current.value; // ambil operator
+        this->next_token(); // konsumsi operator
+    
+        if(op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=") {
+            std::shared_ptr<Stmt> expr = this->parseExpression();
+            this->expect(TokenType::SEMICOLON);
+    
+            auto id = std::dynamic_pointer_cast<IdentifierStmt>(idStmt);
+    
+            // Ubah jadi Assignment( id = BinaryOp(id, op, expr) )
+            auto binary = std::make_shared<BinaryOpStmt>(
+                idStmt,                   // lhs
+                op.substr(0, 1),          // ambil operator dasar: "+", "-", "*", "/", "%"
+                expr                      // rhs
+            );
+    
+            return std::make_shared<AssignmentStmt>(id->name, binary, index);
+        }
+    }
+    
+    
+
+    // function call langsung, misal untuk prosedur
     if(this->match(TokenType::LPAREN)) {
         std::shared_ptr<Stmt> call = this->parseFunctionCallStmt(idStmt);
         this->expect(TokenType::SEMICOLON);
@@ -198,6 +318,99 @@ std::shared_ptr<Stmt> Parser::parseIdentifierStmt(){
     
     throw std::runtime_error("Unexpected identifier usage: " + this->current.value);
 }
+
+std::shared_ptr<Stmt> Parser::parseTypeof(){
+    std::shared_ptr<Stmt> expr = this->parsePrimary(); // cek identifier atau literal
+    return std::make_shared<TypeofStmt>(expr);
+}
+
+
+std::shared_ptr<Stmt> Parser::parseInput(){
+    this->expect(TokenType::LPAREN);
+
+    std::shared_ptr<Stmt> expr = parseExpression();
+
+    this->expect(TokenType::COMMA);
+
+    Token typeTok;
+    if (this->current.type == TokenType::IDENTIFIER || this->current.type == TokenType::STRING_LITERAL) {
+        typeTok = this->current;
+        this->next_token();
+    } else {
+        throw std::runtime_error("Expected type identifier or string, got: " + tokenTypeToString(this->current.type));
+    }
+    std::string dataType = typeTok.value;
+
+
+    this->expect(TokenType::RPAREN);
+    return std::make_shared<InputStmt>(expr, dataType);
+}
+
+
+
+std::shared_ptr<Stmt> Parser::parseStructDecl(){
+    std::string name = this->expect(TokenType::IDENTIFIER).value;
+    this->expect(TokenType::LBRACE);
+    std::vector<std::shared_ptr<StructField>> fields;
+
+    while(this->current.type == TokenType::IDENTIFIER){
+        std::string fieldName = this->expect(TokenType::IDENTIFIER).value;
+
+        // cek tipe eksplisit setelah ':'
+        LiteralType fieldType = LiteralType::UNKNOWN;
+        if(!this->match(TokenType::COLON)){
+            throw std::runtime_error(fieldName + " doesn't have a tipe");
+        }
+    
+        Token typeToken = this->expect(TokenType::TYPE); // misal "i32", "f64"
+        fieldType = mapStringToLiteralType(typeToken.value);
+
+        if(fieldType == LiteralType::UNKNOWN)
+            throw std::runtime_error("Unknown type for field " + fieldName);
+
+        // buat StructField untuk parameter
+        fields.push_back(std::make_shared<StructField>(fieldName, fieldType));
+
+        if(!this->match(TokenType::COMMA))
+            break; // tidak ada koma lagi
+    }
+    this->expect(TokenType::RBRACE);
+    this->expect(TokenType::SEMICOLON, ";");
+    return std::make_shared<StructStmt>(name, fields);
+}
+
+
+
+
+
+std::shared_ptr<Stmt> Parser::parseStructInit(){
+    std::string name = this->expect(TokenType::IDENTIFIER).value;
+    std::cout << "name: " << name << '\n';
+    this->expect(TokenType::LBRACE);
+    
+    std::vector<std::pair<std::string, std::shared_ptr<Stmt>>> fieldsValue;
+
+    // Loop sampai '}'
+    while (this->current.type != TokenType::RBRACE) {
+        std::string fieldName = this->expect(TokenType::IDENTIFIER).value; // nama field
+        this->expect(TokenType::COLON);  // simbol ':'
+
+        // Parsing ekspresi yang akan di-assign ke field
+        std::shared_ptr<Stmt> value = parseExpression();
+
+        fieldsValue.push_back({fieldName, value});
+
+        // Optional comma ',' setelah field
+        if (this->current.type != TokenType::RBRACE) {
+            this->expect(TokenType::COMMA);
+        }
+    }
+
+    this->expect(TokenType::RBRACE);
+
+    return std::make_shared<StructExpr>(name, fieldsValue);
+}
+
 
 
 std::vector<std::shared_ptr<Stmt>> Parser::parseBlock(){
@@ -267,7 +480,7 @@ std::shared_ptr<Stmt> Parser::parseTerm(){
 
 std::shared_ptr<Stmt> Parser::parseFactor(){
     std::shared_ptr<Stmt> left = this->parseUnary();
-    while(this->match(TokenType::OPERATOR, "*") || this->match(TokenType::OPERATOR, "/")){
+    while(this->match(TokenType::OPERATOR, "*") || this->match(TokenType::OPERATOR, "/") || this->match(TokenType::OPERATOR, "%")){
         std::string op = this->tokens[this->position - 1].value;
         std::shared_ptr<Stmt> right = this->parseUnary();
         left = std::make_shared<BinaryOpStmt>(left, op, right);
@@ -287,36 +500,85 @@ std::shared_ptr<Stmt> Parser::parseUnary(){
 
 
 std::shared_ptr<Stmt> Parser::parsePrimary(){
-    if(this->current.type == TokenType::INT ||
-        this->current.type == TokenType::FLOAT ||
-        this->current.type == TokenType::STRING ||
-        this->current.type == TokenType::BOOLEAN)
+    if(this->current.type == TokenType::INT_LITERAL ||
+        this->current.type == TokenType::DOUBLE_LITERAL ||
+        this->current.type == TokenType::STRING_LITERAL ||
+        this->current.type == TokenType::BOOLEAN_LITERAL)
     {
-        std::string value = this->current.value;
-        this->next_token();
-        return std::make_shared<LiteralStmt>(value);
+        std::string raw = this->current.value;
+        if(this->current.type == TokenType::INT_LITERAL){
+            this->next_token();
+            int64_t v = 0;
+            auto res = std::from_chars(raw.data(), raw.data() + raw.size(), v);
+            
+            if(res.ec == std::errc::invalid_argument){
+                throw std::runtime_error("Invalid integer literal: " + raw);
+            } else if(res.ec == std::errc::result_out_of_range){
+                throw std::runtime_error("Integer literal out of range: " + raw);
+            }
+        
+            // pilih constructor LiteralStmt yang sesuai
+            if(v <= INT32_MAX && v >= INT32_MIN){
+                return std::make_shared<LiteralStmt>(static_cast<int32_t>(v));
+            }
+            else {
+                return std::make_shared<LiteralStmt>(v); // INT64
+            }
+        }
+        
+        
+        if(this->current.type == TokenType::DOUBLE_LITERAL) {
+            this->next_token();
+            double d = std::strtod(raw.c_str(), nullptr);
+            return std::make_shared<LiteralStmt>(d);
+        }
+
+        if(this->current.type == TokenType::BOOLEAN_LITERAL){
+            std::string raw = this->current.value; // "true" atau "false"
+            this->next_token();
+            bool b = (raw == "true" || raw == "1");
+            return std::make_shared<LiteralStmt>(b);
+        }
+        
+        if(this->current.type == TokenType::STRING_LITERAL){
+            this->next_token();
+            return std::make_shared<LiteralStmt>(raw);
+        }    
     }
 
     // cek input
-    if(this->current.type == TokenType::INPUT){
-        this->next_token();
-        this->expect(TokenType::LPAREN);
-        this->expect(TokenType::RPAREN);
-        return std::make_shared<InputStmt>();
+    if(this->match(TokenType::INPUT).has_value()){
+        return this->parseInput();
     }
 
     // cek typeof
-    if(this->current.type == TokenType::TYPEOF){
-        // const value = this->current.value;
-        this->next_token();
-        std::shared_ptr<Stmt> expr = this->parsePrimary(); // cek identifier atau literal
-        return std::make_shared<TypeofStmt>(expr);
+    if(this->match(TokenType::TYPEOF).has_value()){
+        return parseTypeof();
     }
 
+    
     // cek variabel
     if(this->current.type == TokenType::IDENTIFIER){
+        if( this->position + 1 < tokens.size() && // untuk cek struct init
+            this->tokens[this->position + 1].type == TokenType::LBRACE){
+            return this->parseStructInit();            
+        }
+        // variabel biasa
         std::shared_ptr<Stmt> ID = std::make_shared<IdentifierStmt>(this->current.value);
         this->next_token();
+
+        // cek dot operator (akses struct field)
+        while (this->match(TokenType::DOT)) {
+            if (this->current.type != TokenType::IDENTIFIER) {
+                throw std::runtime_error("Expected identifier after '.'");
+            }
+
+            std::string fieldName = this->current.value;
+            this->next_token();
+
+            ID = std::make_shared<MemberAccessExpr>(ID, fieldName);
+        }
+
 
         // cek kalau pemanggilan fungsi
         if(this->match(TokenType::LPAREN)){
@@ -359,4 +621,3 @@ std::shared_ptr<Stmt> Parser::parsePrimary(){
     }
     throw std::runtime_error("Unexpected token in expression: " + tokenTypeToString(this->current.type));
 }
-

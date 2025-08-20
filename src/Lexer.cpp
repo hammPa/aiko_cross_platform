@@ -44,13 +44,14 @@ Token Lexer::readNumber(){
     // untuk mendeteksi floating point
     if(this->currentChar == '.'){
         result += this->currentChar;
+        this->next_char();
         while(this->currentChar != '\0' && std::isdigit(this->currentChar)){
             result += this->currentChar;
             this->next_char();
         }
-        return Token(TokenType::FLOAT, result);
+        return Token(TokenType::DOUBLE_LITERAL, result);
     }
-    return Token(TokenType::INT, result);
+    return Token(TokenType::INT_LITERAL, result);
 }
 
 
@@ -70,7 +71,7 @@ Token Lexer::readString(){
 
     if(this->currentChar == quote){
         this->next_char();
-        return Token(TokenType::STRING, result);
+        return Token(TokenType::STRING_LITERAL, result);
     }
     else {
         throw std::runtime_error("Unterminated String Literal");
@@ -83,14 +84,14 @@ Token Lexer::readBoolean() {
     if (this->currentChar == 't') {
         if (this->input.substr(this->position, 4) == "true") {
             for (int i = 0; i < 4; i++) this->next_char();
-            return Token(TokenType::BOOLEAN, "true");
+            return Token(TokenType::BOOLEAN_LITERAL, "true");
         }
     }
 
     if (this->currentChar == 'f') {
         if (this->input.substr(this->position, 5) == "false") {
             for (int i = 0; i < 5; i++) this->next_char();
-            return Token(TokenType::BOOLEAN, "false");
+            return Token(TokenType::BOOLEAN_LITERAL, "false");
         }
     }
 
@@ -120,6 +121,13 @@ Token Lexer::readIdentifier(){
         {"input", TokenType::INPUT},
         {"break", TokenType::BREAK},
         {"continue", TokenType::CONTINUE},
+        {"i32", TokenType::TYPE},
+        {"i64", TokenType::TYPE},
+        {"f32", TokenType::TYPE},
+        {"f64", TokenType::TYPE},
+        {"bool", TokenType::TYPE},
+        {"str", TokenType::TYPE},
+        {"struct", TokenType::STRUCT},
         // {"while", TokenType::WHILE},
     };
 
@@ -175,7 +183,7 @@ Token Lexer::get_next_token(){
         }
 
         // handle identifier
-        if(std::isalpha(this->currentChar) || this->currentChar == '.'){
+        if(std::isalpha(this->currentChar)){
             return this->readIdentifier();
         }
 
@@ -184,9 +192,17 @@ Token Lexer::get_next_token(){
             this->currentChar == '*' || this->currentChar == '/' ||
             this->currentChar == '%') {
 
-            char op = this->currentChar;
+            char first = this->currentChar;
             this->next_char();
-            return Token(TokenType::OPERATOR, std::string(1, op));
+        
+            // cek apakah operator shorthand (+=, -=, *=, /=, %=)
+            if(this->currentChar == '=') {
+                char second = this->currentChar;
+                this->next_char();
+                return Token(TokenType::OPERATOR, std::string() + first + second); // "+=", dll
+            }
+        
+            return Token(TokenType::OPERATOR, std::string(1, first));
         }
 
         // Comparison dan assignment
@@ -225,6 +241,7 @@ Token Lexer::get_next_token(){
             {'{', TokenType::LBRACE},
             {'}', TokenType::RBRACE},
             {',', TokenType::COMMA},
+            {'.', TokenType::DOT},
             {':', TokenType::COLON},
             {'[', TokenType::LBRACKET},
             {']', TokenType::RBRACKET},

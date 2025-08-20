@@ -4,8 +4,8 @@
 #include <string>
 
 enum class TokenType {
-    FLOAT, INT, STRING, BOOLEAN,
-    
+    DOUBLE_LITERAL, INT_LITERAL, STRING_LITERAL, BOOLEAN_LITERAL,
+    TYPE,
     VAR,
     PRINT,
     IF,
@@ -35,6 +35,9 @@ enum class TokenType {
     LBRACKET,
     RBRACKET,
 
+    STRUCT,
+    DOT,
+
     INVALID,
     END_OF_FILE
 };
@@ -43,15 +46,18 @@ struct Token {
     TokenType type;
     std::string value;
 
+    Token(){}
     Token(TokenType t, const std::string& v) : type(t), value(v) {}
 };
 
-std::string tokenTypeToString(TokenType type) {
+inline std::string tokenTypeToString(TokenType type) {
     switch (type) {
-        case TokenType::FLOAT: return "FLOAT";
-        case TokenType::INT: return "INT";
-        case TokenType::STRING: return "STRING";
-        case TokenType::BOOLEAN: return "BOOLEAN";
+        case TokenType::DOUBLE_LITERAL: return "DOUBLE_LITERAL";
+        case TokenType::INT_LITERAL: return "INT_LITERAL";
+        case TokenType::STRING_LITERAL: return "STRING_LITERAL";
+        case TokenType::BOOLEAN_LITERAL: return "BOOLEAN_LITERAL";
+
+        case TokenType::TYPE: return "TYPE";
         
         case TokenType::VAR: return "VAR";
         case TokenType::PRINT: return "PRINT";
@@ -79,6 +85,9 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::COLON: return "COLON";
         case TokenType::LBRACKET: return "LBRACKET";
         case TokenType::RBRACKET: return "RBRACKET";
+
+        case TokenType::STRUCT: return "STRUCT";
+        case TokenType::DOT: return "DOT";
 
         case TokenType::INVALID: return "INVALID";
         case TokenType::END_OF_FILE: return "END_OF_FILE";

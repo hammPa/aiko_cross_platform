@@ -31,6 +31,10 @@ public:
     std::shared_ptr<FunctionDeclStmt> parseFunctionDeclStmt();
     std::shared_ptr<FunctionCallStmt> parseFunctionCallStmt(std::shared_ptr<Stmt>);
     std::shared_ptr<Stmt> parseIdentifierStmt();
+    std::shared_ptr<Stmt> parseTypeof();
+    std::shared_ptr<Stmt> parseInput();
+    std::shared_ptr<Stmt> parseStructDecl();
+    std::shared_ptr<Stmt> parseStructInit();
     std::vector<std::shared_ptr<Stmt>> parseBlock();
     std::shared_ptr<Stmt> parseExpressionUntil(TokenType);
     std::shared_ptr<Stmt> parseExpression();

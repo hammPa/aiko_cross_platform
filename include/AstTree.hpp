@@ -6,13 +6,25 @@
 #include <memory>
 #include <iostream>
 
+#include <charconv> // from chars (int)
+#include <cstdlib> // strtod
+#include <cctype>
+#include <optional>
+#include <variant>
+#include <iomanip>
+
+enum class LiteralType {
+    UNKNOWN, INT_32, INT_64, FLOAT, DOUBLE, STRING, BOOL, STRUCT
+};
+
 enum class StmtType {
     Program, VarDecl, Assignment,
     Print, If, Elif, For,
     ArrayLiteral, ArrayAccess, UnaryOp,
     FunctionDecl, Return, Break, Continue,
     BinaryOp, Literal, Identifier,
-    FunctionCall, Typeof, Input
+    FunctionCall, Typeof, Input, 
+    StructDecl, StructInit, MemberAccess
 };
 
 struct Stmt {
@@ -32,9 +44,11 @@ struct ProgramStmt: public Stmt {
 // -------------------- VarDecl --------------------
 struct VarDeclStmt: public Stmt {
     std::string name;
+    LiteralType varType;
     std::shared_ptr<Stmt> initializer;
-    VarDeclStmt(const std::string n, std::shared_ptr<Stmt> init)
-        : Stmt(StmtType::VarDecl), name(n), initializer(init) {}
+    bool hasExplicit;
+    VarDeclStmt(const std::string n, std::shared_ptr<Stmt> init, LiteralType ty, bool explicitTy)
+        : Stmt(StmtType::VarDecl), name(n), initializer(init), varType(ty), hasExplicit(explicitTy) {}
 };
 
 
@@ -43,8 +57,9 @@ struct VarDeclStmt: public Stmt {
 struct AssignmentStmt: public Stmt {
     std::string name;
     std::shared_ptr<Stmt> value;
-    AssignmentStmt(const std::string& n, std::shared_ptr<Stmt> val)
-        : Stmt(StmtType::Assignment), name(n), value(val) {}
+    std::shared_ptr<Stmt> index;
+    AssignmentStmt(const std::string& n, std::shared_ptr<Stmt> val, std::shared_ptr<Stmt> idx = nullptr)
+        : Stmt(StmtType::Assignment), name(n), value(val), index(idx) {}
 };
 
 
@@ -120,11 +135,11 @@ struct ArrayAccessStmt : public Stmt {
 // -------------------- Function --------------------
 struct FunctionDeclStmt : public Stmt {
     std::string name;
-    std::vector<std::string> params;
+    std::vector<std::shared_ptr<Stmt>> params;
     std::vector<std::shared_ptr<Stmt>> body;
 
     FunctionDeclStmt(const std::string& n,
-                     const std::vector<std::string>& p,
+                     const std::vector<std::shared_ptr<Stmt>>& p,
                      const std::vector<std::shared_ptr<Stmt>>& b)
         : Stmt(StmtType::FunctionDecl), name(n), params(p), body(b) {}
 };
@@ -157,9 +172,26 @@ struct UnaryOpStmt : public Stmt {
 
 
 struct LiteralStmt : public Stmt {
-    std::string value;
-    LiteralStmt(const std::string& val)
-        : Stmt(StmtType::Literal), value(val) {}
+    std::variant<int32_t, int64_t, double, std::string, bool> value;
+    LiteralType dataType = LiteralType::UNKNOWN;
+
+    explicit LiteralStmt(const std::string& s)
+        : Stmt(StmtType::Literal), value(s), dataType(LiteralType::STRING) {}
+    
+    explicit LiteralStmt(int32_t i)
+        : Stmt(StmtType::Literal), value(i), dataType(LiteralType::INT_32) {}
+    
+    explicit LiteralStmt(int64_t i)
+        : Stmt(StmtType::Literal), value(i), dataType(LiteralType::INT_64) {}
+    
+    explicit LiteralStmt(float f)
+        : Stmt(StmtType::Literal), value(static_cast<double>(f)), dataType(LiteralType::DOUBLE) {}
+    
+    explicit LiteralStmt(double d)
+        : Stmt(StmtType::Literal), value(d), dataType(LiteralType::DOUBLE) {}
+    
+    explicit LiteralStmt(bool b)
+        : Stmt(StmtType::Literal), value(b), dataType(LiteralType::BOOL) {}
 };
 
 struct IdentifierStmt : public Stmt {
@@ -183,7 +215,9 @@ struct TypeofStmt : public Stmt {
 };
 
 struct InputStmt : public Stmt {
-    InputStmt() : Stmt(StmtType::Input) {}
+    std::shared_ptr<Stmt> expr;
+    std::string dataType;
+    InputStmt(std::shared_ptr<Stmt> e, const std::string& ty = "") : Stmt(StmtType::Input), expr(e), dataType(ty) {}
 };
 
         
@@ -197,9 +231,41 @@ struct ContinueStmt : public Stmt {
 
 
 
+// -------------------- Struct --------------------
+struct StructField {
+    std::string name;
+    LiteralType type;
+
+    StructField(std::string& n, LiteralType ty)
+        : name(n), type(ty) {}
+};
+
+struct StructStmt : public Stmt {
+    std::string name;
+    std::vector<std::shared_ptr<StructField>> fields;
+    
+    StructStmt(const std::string& n, const std::vector<std::shared_ptr<StructField>>& fld)
+        : Stmt(StmtType::StructDecl), name(n), fields(fld) {}
+};
 
 
+struct StructExpr : public Stmt {
+    std::string name;
+    std::vector<std::pair<std::string, std::shared_ptr<Stmt>>> fieldsValue;
+    
+    StructExpr( const std::string& n,
+                std::vector<std::pair<std::string, std::shared_ptr<Stmt>>> fv)
+        : Stmt(StmtType::StructInit), name(n), fieldsValue(fv) {}
+};
 
+
+struct MemberAccessExpr : Stmt {
+    std::shared_ptr<Stmt> object;
+    std::string memberName;
+
+    MemberAccessExpr(std::shared_ptr<Stmt> obj, const std::string& mem)
+        : Stmt(StmtType::MemberAccess), object(obj), memberName(mem) {}
+};
 
 
 
@@ -211,12 +277,12 @@ struct ContinueStmt : public Stmt {
 
 #include <iostream>
 
-void indent(int level) {
+inline void indent(int level) {
     for (int i = 0; i < level; ++i)
         std::cout << "  ";
 }
 
-void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
+inline void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
     if (!stmt) {
         indent(level); std::cout << "(null stmt)" << std::endl;
         return;
@@ -247,9 +313,35 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
 
         case StmtType::Literal: {
             auto lit = std::static_pointer_cast<LiteralStmt>(stmt);
-            indent(level); std::cout << "Literal: " << lit->value << std::endl;
+            indent(level);
+        
+            // cek tipe dan print sesuai
+            if (std::holds_alternative<int32_t>(lit->value)) {
+                std::cout << "Literal (int32): " << std::get<int32_t>(lit->value) << std::endl;   
+            }
+            else if (std::holds_alternative<int64_t>(lit->value)) {
+                std::cout << "Literal (int64): " << std::get<int64_t>(lit->value) << std::endl;
+            }
+            // else if (std::holds_alternative<float>(lit->value)) {
+            //     std::ostringstream oss;
+            //     oss << std::fixed << std::setprecision(6) << std::get<float>(lit->value);
+            //     std::cout << "Literal (float): " << oss.str() << std::endl;
+            // }
+            else if (std::holds_alternative<double>(lit->value)) {
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(6) << std::get<double>(lit->value);
+                std::cout << "Literal (double): " << oss.str() << std::endl;
+            }
+            else if (std::holds_alternative<std::string>(lit->value)) {
+                std::cout << "Literal (string): \"" << std::get<std::string>(lit->value) << "\"" << std::endl;
+            }
+            else if (std::holds_alternative<bool>(lit->value)) {
+                std::cout << "Literal (bool): " << (std::get<bool>(lit->value) ? "true" : "false") << std::endl;
+            }
+        
             break;
         }
+        
 
         case StmtType::Identifier: {
             auto id = std::static_pointer_cast<IdentifierStmt>(stmt);
@@ -314,10 +406,9 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
             auto fn = std::static_pointer_cast<FunctionDeclStmt>(stmt);
             indent(level); std::cout << "Function: " << fn->name << std::endl;
         
-            indent(level + 1); std::cout << "Params: ";
+            indent(level + 1); std::cout << "Params: \n";
             for (const auto& p : fn->params)
-                std::cout << p << " ";
-            std::cout << std::endl;
+            printStmt(p, level + 2);
         
             indent(level + 1); std::cout << "Body:" << std::endl;
             for (const auto& s : fn->body)
@@ -337,6 +428,7 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
 
         case StmtType::ArrayLiteral: {
             auto arr = std::static_pointer_cast<ArrayLiteralStmt>(stmt);
+            indent(level); std::cout << "Size:" << arr->elements.size() << std::endl;
             indent(level); std::cout << "ArrayLiteral:" << std::endl;
             for (const auto& e : arr->elements)
                 printStmt(e, level + 1);
@@ -351,7 +443,16 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
         }
 
         case StmtType::Input: {
+            auto input = std::static_pointer_cast<InputStmt>(stmt);
             indent(level); std::cout << "Input" << std::endl;
+            printStmt(input->expr, level + 1);
+            break;
+        }
+
+        case StmtType::Typeof: {
+            auto type = std::static_pointer_cast<TypeofStmt>(stmt);
+            indent(level); std::cout << "Typeof" << std::endl;
+            printStmt(type->expression, level + 1);
             break;
         }
 
@@ -367,6 +468,7 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
             auto assign = std::static_pointer_cast<AssignmentStmt>(stmt);
             indent(level); std::cout << "Assignment: " << assign->name << std::endl;
             printStmt(assign->value, level + 1);
+            if(assign->index) printStmt(assign->value, level + 1);
             break;
         }
         
@@ -386,7 +488,77 @@ void printStmt(const std::shared_ptr<Stmt>& stmt, int level = 0) {
         case StmtType::Continue: {
             indent(level); std::cout << "Continue" << std::endl;
             break;
+        }
+
+
+
+        case StmtType::StructDecl: {
+            auto structStmt = std::static_pointer_cast<StructStmt>(stmt);
+            indent(level); 
+            std::cout << "StructDecl: " << structStmt->name << std::endl;
+        
+            for (const auto& field : structStmt->fields) {
+                indent(level + 1);
+                std::cout << "Field: " << field->name 
+                          << " (type: " << static_cast<int>(field->type) << ")" << std::endl;
+            }            
+            break;
+        }
+
+
+        case StmtType::StructInit: {
+            auto structExpr = std::static_pointer_cast<StructExpr>(stmt);
+            indent(level);
+            std::cout << "StructExpr: " << structExpr->name << std::endl;
+        
+            for (const auto& fieldPair : structExpr->fieldsValue) {
+                indent(level + 1);
+                std::cout << "Field: " << fieldPair.first << " = ";
+        
+                // Kita print value field berdasarkan tipenya
+                auto valueStmt = fieldPair.second;
+                if (!valueStmt) {
+                    std::cout << "null" << std::endl;
+                    continue;
+                }
+        
+                switch (valueStmt->type) {
+                    case StmtType::Literal: {
+                        auto lit = std::static_pointer_cast<LiteralStmt>(valueStmt);
+                        printStmt(lit);
+                        break;
+                    }
+                    case StmtType::BinaryOp: {
+                        std::cout << "<BinaryOp>" << std::endl;
+                        break;
+                    }
+                    case StmtType::Identifier: {
+                        auto id = std::static_pointer_cast<IdentifierStmt>(valueStmt);
+                        std::cout << id->name << std::endl;
+                        break;
+                    }
+                    default:
+                        std::cout << "<Expr>" << std::endl;
+                }
+            }
+            break;
         }        
+        
+
+        case StmtType::MemberAccess: {
+            auto member = std::static_pointer_cast<MemberAccessExpr>(stmt);
+            indent(level);
+            std::cout << "MemberAccessExpr:" << std::endl;
+
+            indent(level + 1);
+            std::cout << "object:" << std::endl;
+            printStmt(member->object, level + 2);
+
+            indent(level + 2);
+            std::cout << "memberName: " << member->memberName << std::endl;
+            break;
+        }
+        
 
 
         default: {
