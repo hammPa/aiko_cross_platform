@@ -1,34 +1,114 @@
-Beberapa Hal yang Belum Ada (Opsional tapi Berguna):
-1. Unary operator (seperti -a, !true)
-    Fungsi parseUnary() masih kosong, dan kamu belum mendukung notasi unary.
+13 agustus
+menambahkan enum literal type dan di literalstmt membuat variabel value bertipe varian, lalu membuat overloading constructor untuk 4 tipe data
+mengubah implementari parsePrimary dengan menambahkan pengecekan tipedata
+mengubah implementasi parseForStmt dengan mengecek tipe data  literal
 
-2. Scope lokal & closure belum jelas
-    Tidak terlihat bagaimana variabel dideklarasikan dalam fungsi memiliki scope tersendiri. (Mungkin kamu menunggu ke tahap runtime?)
+14 agustus
+membuat code generator untuk:
+print literal
+print identifier
+print unary
+print binary
 
-3. while belum diaktifkan
-    Komentar di lexer-mu menunjukkan kamu belum pakai while.
-
-4. Assignment ke variabel yang sudah ada
-    Tidak terlihat a = 5; tanpa var, padahal penting dalam bahasa imperatif.
-
-5. break dan continue
-    Belum terlihat di for atau statement control flow lain.
-
-6. Tipe data eksplisit
-    Semua variabel bertipe dinamis (seperti JS atau Python). Tidak masalah, tapi kalau nanti kamu pakai LLVM, kamu perlu tahu tipe-tipe ini secara statis saat compile time.
-
-
-    menambahkan ast unary di ast_tree
-    menambahkan pendeteksian di lexer get_next_char
-    menambah parseunary diparser
-    
-    
-    
-    menambahkan ast assignment di ast_tree
-    menambahkan pengecekan untuk assignment di declarationvariable
+deklarasi variabel dengan tipe data int, float, bool, string, assignment variabel bisa ganti tipe data
+menambahkan scope
+mengubah generateprogram menjadi memanggil generate statement, parameter kedua adalah ast tree jadi bukan langsung ambil dari properti tapi di pass by reference
+menambahkan looping dan scoping dalam loop
+sudah tambah if serta scoping
+print ast tree dan print token inline agar bisa definisi > 1 kali
 
 
-    menambahkan token break dan continue
-    menambahkan keywordnya  di lexer
-    menambahkan pengecekan di parser
-    menambahkan ast break dan continue
+15 agustus
+menambahkan next char setelah deteksi titik di lexer
+rencana mngembalikan tipe data floating ke flaot alih alih double
+menambahkan generate array, tapi disini nama variabel menunjuk ke alamat pertama tidak punya alamat sendiri dan juga baru bisa int
+print array tapi belum cek diluar batas
+menambahkan ukuran variabel, defaultnya 1 dan fungsi menghitungnya di codegen
+
+
+// ini gatau jdi atau ga, yg jelas belum
+sebenarnya ada ide satu lagi cara print arrray nanti hasilnya tidak perlu fungsi terpisah
+jadi nanti dicek dlu apakah si array, kalau iya val yang merupakan genExpr itu looping, kalau tidak val itu satu saja
+
+
+
+menambahkan pengecekan di lexer untuk +=, -=, *= /=, lalu menambah pengecekan parsernya agar bisa operator assignment
+menambahkan break dan continue di codegen hpp dan fiturnya berhasil
+menambahkan parser typeof di cpp dan hpp dan implementasi codegen
+
+
+17 agustus
+menambahkan expr di ast tree input, lalu pengecekan di parser cpp dan hpp dan implementasi input
+memperbaiki perbandingan string dengan menambah kondisi jika variabel menyimpan alamat string
+ditoken mengubah token semua float, int, bool, string menjadi double_literal, int_literal, dll
+lalu mengubah semua tokentype::float sampai string menjadi tokentype::double_literal sampai string dan juga di parser
+lalu membuat token khusus tipe data double_type, int_type, dll
+lalu membuat lexer untuk deteksi nama tipe data agar tidak terdeteksi identifier
+menambah ast untuk tipe data dan menambahkannya di parseVarDecl di parser
+mengubah ast assignment agar support array dan parseIdentifier serta codegen di handleAssignment
+
+
+
+18 agustus
+menambahkan genexpr array access dan fungsi untuk mendapatkan nilai ke index agar lebih modular
+alokasi memori di vardecl sekarang diubah dari semuanya di main func, menjadi sesuai difungsi mana skrg
+membuat fitur function tanpa return tapi sebenarnya dibelakang layar ini int dan return 0
+
+
+
+
+19 agustus
+menambahkan support deklarasi variable tanpa nilai di parser vardecl dengna menggunakan if dan melakukan pengecekan juga di codegen handlevardecl
+mengubah kode pada ast tree functiondecl untuk parameter dari vector string menjadi vector shared_ptr stmt
+mengubah parser functiondecl agar menghandle string name of param menjadi shared ptr vardecl stmt serta codegennya untuk paramname
+menambah return di function dan mengembalikan nilai di generateVardecl
+lalu untuk return ini juga menyambungkan hasilnya ke vardecl agar disipan di symbol table
+
+
+
+// ini menambah tipe data eksplisit, banyak yang dirombak semua yang dibawha ini hanya untuk itu
+
+mengubah token class tokentype, int_type sampai string_type jadi type saja, begitu juga fungsi tostirngnya
+lalu untuk lexer menambahkan pengecekan untuk keywords i32 sampai string
+
+untuk ast tree, menambah tipe literaltype int32, in64, float, double, string, bool serta ast tree dari vardecl dengan menambah variabel untuk tipe data
+di ast juga ditambahkan 2 tipe data lagi yaitu i64 dan float untuk explicit literalstmt tapi sementara float masih ke double
+untuk parser menambah opsional checking untuk tipe eksplisit dan fungsi mappingStringToLiteralType serta inferTypeFromExpr
+
+generate identifier, generate literal, generate typeof, genrate input, handle assignment, handle for, handle func decl, handle print, handle print array, handle var decl menambah tipe int64
+menambahkan jg pengecekan tipe eksplisit di parse func decl untuk parameter serta parseprimary dimana mengecek tipe int32 atau 64
+
+
+di codegen menambahkan 3 fungsi untuk handle default function
+dengan dibuatya  fungsi helper, kode-kode berikut di refactor:
+-handle variable declaration
+-generate literal
+-handle print
+-handle get print
+-generate typeof
+-handle assignment
+
+
+menambahkan tipe data yang tidak bisa diganti dengan isstatictype di struct varinfo, dan selesailah tipe data mueheheheh
+
+
+
+menambahkan token struct lalu membuatnya menjadi keyword di lexer serta deteksi dot di lexer
+mendeteksi structdecl dan structdef di parser serta membuat ast tree untuk structStmt, structExpr dan structfield
+membuat codegen untuk struct dengan membuat variable khusus struk di codegen hpp lalu membuat code generation untuk expression structexpr lalu divariable declaration menyimpan 
+
+
+
+20 agustus
+membuat memberAccess di ast tree untuk Struct dan parser di parseprimary, lalu mengubah generateidentifier unntuk mendeteksi struct serta codegen struct init, struct declaration, dan access member
+menambahkan parameter fungsi yang bisa static tapi blm bisa otomatis cek tipe data
+mengubah cara mendapatkan return type agar lebih dinamis sedikit
+% menambahkan parsing detect untuk struct explicit
+
+
+
+ada beberapa ketidakkonsistenan pada struct, ada yang struct tipeya struct, ada yg  tipenya unknown
+pengennya si perbaiki dimana fungsi default adalah int, dah hanya bisa int ini diubah jdi bisa atleast 4 tipe data
+rencananya typeof diganti jadi enum bukan string
+
+plot twist: sudah support array 2d tapi blm bisa di akses atau print
